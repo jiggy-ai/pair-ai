@@ -55,11 +55,12 @@ def find_files() -> str:
     filelist = ""
     if gitignore_path:
         ignored_patterns.extend(parse_gitignore(gitignore_path))
-
+    count = 0
     for file_path in find_files_filtered(start_dir, ignored_patterns):
         relative_path = os.path.relpath(file_path, start=start_dir)
         if not relative_path.startswith('.'):
             relative_path = f"./{relative_path}"
         filelist += relative_path + "\n"
-    print(f'filelist has {len(filelist)} entries')        
+        count += 1
+    print(f'filelist has {count} entries')    
     return filelist

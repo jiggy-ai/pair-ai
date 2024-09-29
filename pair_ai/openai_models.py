@@ -1,5 +1,5 @@
 from typing import List, Callable, Optional, Union, Literal
-from pydantic import BaseModel, ValidationError, Field, validator, root_validator
+from pydantic import BaseModel, ValidationError, Field, validator
 
 
 DetailType = Literal['high', 'low']
@@ -30,6 +30,7 @@ class MessageContent(BaseModel):
             raise ValueError(f'type must be one of {allowed_types}, got {value}')
         return value
 
+    """
     @root_validator
     def check_content(cls, values):
         content_type, text, image_url = values.get('type'), values.get('text'), values.get('image_url')
@@ -38,7 +39,7 @@ class MessageContent(BaseModel):
         elif content_type == 'image_url' and not image_url:
             raise ValueError('image_url must be provided when type is "image_url"')
         return values
-
+    """
 
 MsgRoleType = Literal["system", "user", "assistant"]
 
@@ -63,7 +64,7 @@ class CompletionRequest(BaseModel):
     """
     model: str
     messages: list[ChatCompletionMessage]
-    max_tokens: Optional[int] 
+    max_tokens: Optional[int]  = None
     temperature: float
     stream: bool
 

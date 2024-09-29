@@ -13,6 +13,7 @@ import tiktoken
 import io 
 import base64
 
+
 PAIR_MODEL = os.environ.get('PAIR_MODEL', 'gpt-4o')
 
 client = OpenAI()
@@ -46,8 +47,16 @@ def price(model, input_tokens, output_tokens):
         dollars =  (.03*input_tokens + .06*output_tokens) / 1000
     elif model in ['gpt-4-1106-preview', 'gpt-4-turbo-2024-04-09', 'gpt-4-turbo']:
         dollars =  (.01*input_tokens + .03*output_tokens) / 1000
-    elif model in ['gpt-4o']:
+    elif model in ['gpt-4o', 'chatgpt-4o-latest', 'gpt-4o-2024-05-13']:
         dollars =  (5*input_tokens + 15*output_tokens) / 1e6
+    elif model in ['gpt-4o-2024-08-06']:
+        dollars =  (2.5*input_tokens + 10*output_tokens) / 1e6
+    elif model in ['gpt-4o-mini', 'gpt-4o-mini-2024-07-18']:
+        dollars =  (.15*input_tokens + .6*output_tokens) / 1e6
+    elif model in ['o1-preview', 'o1-preview-2024-09-12']:
+        dollars =  (15*input_tokens + 60*output_tokens) / 1e6
+    elif model in ['o1-mini', 'o1-mini-2024-09-12']:
+        dollars =  ( 3*input_tokens + 12*output_tokens) / 1e6
     else:
         raise ValueError(f"model {model} not supported")
     return dollars
@@ -104,7 +113,7 @@ def message_tokens(msg: ChatCompletionMessage) -> int:
 
 
 def completions(messages       : List[ChatCompletionMessage],
-                model          : str = 'gpt-4-turbo-2024-04-09',
+                model          : str,
                 temperature    : float = 0):
 
     """
@@ -118,21 +127,29 @@ def completions(messages       : List[ChatCompletionMessage],
                          model           = model,
                          temperature     = temperature,
                          inputs          = messages,
-                         input_tokens    = sum([message_tokens(m) for m in messages]) + 2, 
+                         input_tokens    = 0,   # sum([message_tokens(m) for m in messages]) + 2, 
                          response_tokens = 0,
                          price           = 0)
 
     creq = CompletionRequest(model=model, messages=messages, temperature=temperature, stream=True)
+    #creq = CompletionRequest(model=model, messages=messages, stream=True)
     #print(creq.json(exclude_none=True, indent=4))
     try:
-        response = client.chat.completions.create(**creq.dict(exclude_none=True))
+        response = client.chat.completions.create(**creq.dict(exclude_none=True),
+                                                  stream_options={"include_usage": True})
+        
+
 
         for chunk in response:
-            output = chunk.choices[0].delta.content or ''
-            if output:
-                resp.delta = output
-                resp.text += output
-                yield resp
+            if chunk.choices:
+                output = chunk.choices[0].delta.content or ''
+                if output:
+                    resp.delta = output
+                    resp.text += output
+                    yield resp
+            if chunk.usage:
+                resp.input_tokens = chunk.usage.prompt_tokens
+                resp.response_tokens = chunk.usage.completion_tokens
 
     except RateLimitError as e:   
         logger.warning(f"OpenAI RateLimitError: {e}")
@@ -143,7 +160,7 @@ def completions(messages       : List[ChatCompletionMessage],
     except Exception as e:
         logger.exception(e)
         raise
-    resp.response_tokens = len(enc.encode(resp.text))
+    #resp.response_tokens = len(enc.encode(resp.text))
     resp.price = price(model, resp.input_tokens, resp.response_tokens)
     yield resp
 
@@ -151,9 +168,9 @@ def completions(messages       : List[ChatCompletionMessage],
 ValidatorFunctionType = Callable[[BaseModel, str], None]
 
 def extract_dataclass(messages       : List[ChatCompletionMessage],
-                      data_model     : BaseModel,                 
+                      data_model     : BaseModel,
+                      model          : str,                      
                       retry          : int = 3,
-                      model          : str = 'gpt-4-turbo-2024-04-09',
                       temperature    : float = 0,                            
                       task_validator : Optional[ValidatorFunctionType] = None) -> BaseModel:
 
@@ -189,7 +206,7 @@ def extract_dataclass(messages       : List[ChatCompletionMessage],
             continue
   
         try:
-            data_model =  data_model(**json_content)
+            data_model_obj =  data_model(**json_content)
         except ValidationError as e:
             last_exception = e
             error_msg = f"pydantic exception: {e}"
@@ -201,16 +218,16 @@ def extract_dataclass(messages       : List[ChatCompletionMessage],
                 
         if task_validator:
             try:
-                task_validator(data_model, content)
-            except ValidationError as e:
+                task_validator(data_model_obj, content)
+            except (ValidationError, ValueError) as e:
                 last_exception = e
                 error_msg = f"validation exception: {e}"
                 logger.warning(error_msg)
-                messages.append(assistant_message)            
-                messages.append({"role"    : "system",
-                                 "content" : error_msg})
-        logger.info(data_model.json())
-        return data_model
+                messages.append(ChatCompletionMessage(role='assistant', content=content))
+                messages.append(ChatCompletionMessage(role='system', content=error_msg))
+                continue
+        logger.info(data_model_obj.json())
+        return data_model_obj
     # end retry loop
     logger.error(f"Failed to extract dataclass after {retry} attempts")
     raise last_exception

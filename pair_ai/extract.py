@@ -106,8 +106,8 @@ class CodeBlock(BaseModel):
     type: str
     
 def extract_filename_code_blocks(text) -> List[CodeBlock]:
-    #pattern = r"(?:\*\*(\S+)\*\*|##\s*(\S+))?\s*```(\w+)?(?:\s+)?(.*?)```"
-    pattern = r"(?:\*\*(\S+)\*\*:?|##\s*(\S+))?\s*```(\w+)?(?:\s+)?(.*?)```"
+    #pattern = r"(?:\*\*(\S+)\*\*:?|##\s*(\S+))?\s*```(\w+)?(?:\s+)?(.*?)```"
+    pattern = r"(?:\*\*(?:filename:\s*)?(\S+)\*\*:?|##\s*(?:filename:\s*)?(\S+))?\s*```(\w+)?(?:\s+)?(.*?)```"
     matches = re.findall(pattern, text, re.DOTALL)
     
     # filename, code_block, file_type; handling filename preprocessing

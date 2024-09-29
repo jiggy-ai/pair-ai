@@ -61,10 +61,9 @@ def save_code_blocks(code_blocks):
             continue
         
         if os.path.exists(cb.filename):
-            if os.path.getsize(cb.filename) > len(cb.code):
-                # new content is smaller than old content, so don't overwrite
-                #cb.filename += ".edit"
-                msg = f"error processing {cb.filename}: file exists and new content is smaller than old content. Output the full new file content or a context diff of the changes so we can patch the file."
+            if len(cb.code) < 0.8*os.path.getsize(cb.filename):
+                # new content is much smaller than old content, so don't overwrite
+                msg = f"error processing {cb.filename}: file exists and new content is much smaller than old content."
                 print_formatted_text(FormattedText([ ("fg:violet", msg)]))
                 continue
             else:
@@ -171,16 +170,19 @@ def repl():
                                                       file_contents=[FileContent(filename=fn, content=open(fn,'r').read()) for fn in list(pair_state.project_files)],
                                                       chat_messages = pair_state.chat_messages).messages(),
                                          FileList,
-                                         task_validator=validate_filelist)
+                                         task_validator=validate_filelist,
+                                         model='gpt-4o')
             for fn in filelist.filenames:
                 pair_state.add_file(fn)
                                     
         
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  ")
         try:
-            for cr in completions(messages=pair_state.messages(), model=PAIR_MODEL):
+            for cr in completions(messages=pair_state.messages(), model=PAIR_MODEL):                
                 sys.stdout.write(cr.delta)
                 sys.stdout.flush()
+
+                    
         except KeyboardInterrupt:
             pair_state.remove_last_message()
             print_formatted_text(FormattedText([("fg:violet", "\n\nInterrupted; your last message and model response were not added to conversation state...")]))
